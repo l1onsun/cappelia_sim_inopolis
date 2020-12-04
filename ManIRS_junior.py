@@ -1,106 +1,116 @@
 import os
 
 os.add_dll_directory(r'C:\Program Files\CoppeliaRobotics\CoppeliaSimEdu')
-
 import b0RemoteApi
 from RoboFunctions import ManRobot
 import time
-
-with b0RemoteApi.RemoteApiClient('b0RemoteApi_pythonClient', 'b0RemoteApi_manirs') as client:
-    doNextStep = True
-    robot = ManRobot(client)
-    step = 0  # переменная для подсчета шагов симуляции
+from typing import Optional
+from collections import deque
+from math import isclose
 
 
+class Simulation:
+    def __init__(self):
+        self.robot: Optional[ManRobot] = None
+        self._do_next_step = True
+        self.init = self.simulation_step_started = self.simulation_step_done = self.cleanup = None
+        self.on_init(lambda: None)
+        self.on_step_started(lambda msg: None)
+        self.on_step_done(lambda msg: None)
+        self.on_cleanup(lambda: None)
+
+    def on_init(self, callback):
+        self.init = callback
+
+    def on_step_started(self, callback):
+        self.simulation_step_started = callback
+
+    def on_step_done(self, callback):
+        def callback_and_sync():
+            callback()
+            self._do_next_step = True
+
+        self.simulation_step_done = callback_and_sync
+
+    def on_cleanup(self, callback):
+        self.cleanup = callback
+
+    def start(self):
+        with b0RemoteApi.RemoteApiClient('b0RemoteApi_pythonClient', 'b0RemoteApi_manirs') as client:
+            self.robot = ManRobot(client)
+
+            client.simxSynchronous(True)
+            client.simxGetSimulationStepStarted(client.simxDefaultSubscriber(self.simulation_step_started))
+            client.simxGetSimulationStepDone(client.simxDefaultSubscriber(self.simulation_step_done))
+            client.simxStartSimulation(client.simxDefaultPublisher())
+            self.init()
+            while not self.robot.disconnect and self.robot.simTime < 120:
+                if self._do_next_step:
+                    self._do_next_step = False
+                    client.simxSynchronousTrigger()
+                client.simxSpinOnce()
+            self.cleanup()
+            if not self.robot.disconnect:
+                client.simxStopSimulation(client.simxDefaultPublisher())
+            else:
+                print('Simulation was stopped and client was disconnected!')
+
+
+class RobotController:
+    def __init__(self, robot: ManRobot):
+        self._x = self._z = 0
+        self.tasks = deque()
+
+    def receive_mission(self, mission):
+        self.mission = mission
+
+    def update(self):
+        pass
+
+
+def task_move():
+    def mission():
+        task_move()
+
+    def complete():
+        pass
+
+
+def move_pos(robot: ManRobot, x, y, z):
+    robot.setPositions(x, y, z)
+
+    def wait():
+        if isclose(robot.X_enc, x) and \
+                isclose(robot.Y_enc, y) and \
+                isclose(robot.Z_enc, z):
+            return True
+        return False
+
+    return wait
+
+
+def mission(robot: ManRobot):
+    yield move_pos(robot, 100, 100, 100)
+    yield move_pos(robot, 100, 100, 0)
+    yield move_pos(robot, 0, 100, 100)
+    yield move_pos(robot, 0, 100, 0)
+
+
+def main():
+    sim = Simulation()
+    autobot = RobotController(sim.robot)
+
+    @sim.on_init
     def init():
-        # пример использования функций управления роботом:
-        # подробнее о всех функицях, их параметрах и возвращаемых значения см ReadMe
+        autobot.receive_mission(mission)
+        sim.robot.setPositions(100, 100, 100)
 
-        # энкодеры:
-        # robot.X_enc # положение привода X
-        # robot.Y_enc # положение привода Y
-        # robot.Z_enc # положение привода Z
+    @sim.on_step_started
+    def step_start(msg):
+        pass
 
-        # simTime=robot.simTime
-
-        # posX=190  #мм в диапазоне 0..190
-        # posY=170  #мм в диапазоне 0..170
-        # posZ=190 #мм в диапазоне 0..190
-        # robot.setPosX(posX)
-        # robot.setPosY(posY)
-        # robot.setPosZ(posZ)
-        # robot.setPositions(posX, posY, posZ)
-
-        # kp=0.1
-        # ki=0.01
-        # kd=0.1
-        # robot.setPID(robot.linkX,kp,ki,kd) #установить параметры ПИД-регулятора для выбранного звена
-        # robot.resetPID(robot.linkX)        #сбросить параметры ПИД-регулятора (kp=0.1, ki=0, kd=0)
-
-        # speed=100   #максимальная скорость звена в мм/с
-        # robot.setMaxSpeed(robot.linkX, speed) #установить максимальную скорость для выбранного звена
-
-        # robot.grapObject()    #включить схват
-        # robot.releaseObject() #выключить схват
-
-        # resX=256 #Высота кадра в пикселях, диапазон от 1 до 1024 пикселей
-        # resY=256 #Ширина кадра в пикселях, диапазон от 1 до 1024 пикселей
-        # robot.setCameraResolution(resX, resY) #установить разрешение камеры робота
-
-        # img=robot.cam_image
-
-        # robot.stopDisconnect=True #Параметр включает или отключает остановку программы при дисконеекте с симулятором
-        time.time()
+    sim.start()
 
 
-    # See also:
-    # ReadMe for information about robot and simulator
-    # https://coppeliarobotics.com/helpFiles/en/b0RemoteApi-python.htm - list of all Python B0 remote API function
-
-    def simulationStepStarted(msg):
-        # бездействие
-        time.time()
-
-
-    def simulationStepDone(msg):
-        # бездействие
-        global doNextStep  # а это обязательный участок кода
-        doNextStep = True  # для синхронизации с основным потоком ниже
-
-
-    def cleanup():
-        # бездействие
-        time.time()
-
-
-    client.simxSynchronous(True)
-    client.simxGetSimulationStepStarted(client.simxDefaultSubscriber(simulationStepStarted))
-    client.simxGetSimulationStepDone(client.simxDefaultSubscriber(simulationStepDone))
-    res = client.simxStartSimulation(client.simxDefaultPublisher())
-    init()
-    # Put your main action here:
-
-    startTime = time.time()
-    startStep = step
-    while (not robot.disconnect) and robot.simTime < 120:  # крутить цикл 5 секунд с начала симуляции
-        # варианты условий для выхода из цикла:
-        # time.time()<startTime+5 #крутить 5 секунд саму программу
-        # step-startStep<100 #крутить цикл 100 шагов симуляции
-        if doNextStep:
-            doNextStep = False
-            # действия в цикле, синхронизированном с симулятором
-
-            step = step + 1
-            client.simxSynchronousTrigger()
-        client.simxSpinOnce()
-
-    # тут могут быть несинхронизированные с симулятором действия,
-    # блокирующие функции:
-    # time.sleep(надолго)
-
-    # End of simulation:
-    cleanup()
-    if not robot.disconnect:
-        client.simxStopSimulation(client.simxDefaultPublisher())
-    else:
-        print('Simulation was stopped and client was disconnected!')
+if __name__ == '__main__':
+    main()
