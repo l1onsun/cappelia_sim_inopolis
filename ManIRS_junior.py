@@ -4,6 +4,7 @@ os.add_dll_directory(r'C:\Program Files\CoppeliaRobotics\CoppeliaSimEdu')
 import b0RemoteApi
 from RoboFunctions import ManRobot
 from typing import Optional
+from math import isclose
 
 
 class SyncSimulation:
@@ -53,27 +54,63 @@ class SyncSimulation:
                 print('Simulation was stopped and client was disconnected!')
 
 
-sim = SyncSimulation()
+class RobotController:
+    def __init__(self):
+        self.wait_for_completion = None
+        self.mission_generator = None
+
+    def start_mission(self, mission_generator):
+        self.mission_generator = mission_generator
+        self.wait_for_completion = next(self.mission_generator)
+
+    def next_mission(self):
+        result = next(self.mission_generator)
+        if result == "complete":
+            self.wait_for_completion = self.mission_generator = None
+        else:
+            self.wait_for_completion = result
+
+    def update(self):
+        if self.wait_for_completion is not None:
+            if self.wait_for_completion():
+                self.wait_for_completion = next(self.mission_generator)
 
 
-@sim.on_init
-def init():
-    pass
+def move_pos(robot: ManRobot, x, y, z):
+    robot.setPositions(x, y, z)
+
+    def wait_for_completion():
+        if isclose(robot.X_enc, x, abs_tol=1) and \
+                isclose(robot.Y_enc, y, abs_tol=1) and \
+                isclose(robot.Z_enc, z, abs_tol=1):
+            return True
+        return False
+
+    return wait_for_completion
 
 
-@sim.on_step_started
-def step_start():
-    pass
+def mission_x(robot: ManRobot):
+    yield move_pos(robot, 100, 100, 100)
+    yield move_pos(robot, 100, 100, 0)
+    yield move_pos(robot, 0, 100, 100)
+    yield move_pos(robot, 0, 100, 0)
 
 
-@sim.on_step_done
-def step_end():
-    pass
+if __name__ == '__main__':
+    sim = SyncSimulation()
+    autobot = RobotController()
 
 
-@sim.on_cleanup
-def cleanup():
-    pass
+    @sim.on_init
+    def init():
+        autobot.start_mission(
+            mission_x(sim.robot)
+        )
 
 
-sim.start()
+    @sim.on_step_started
+    def step_start():
+        autobot.update()
+
+
+    sim.start()
