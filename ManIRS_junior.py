@@ -125,27 +125,99 @@ class Evangelion:
         yield self.rise(50)
         yield self.shift(x, y)
 
-    def grab_to(self, x, y):
-        yield self.rise(40)
+    def grab_to(self, x, y, height = 40):
+        yield self.rise(height)
         yield from self.release_and_grab()
         yield self.rise(80)
         yield self.shift(x, y)
-        yield self.rise(40)
+        yield self.rise(height)
         yield from self.release()
 
+    def get_color(self):
+        r, g, b = self.img_pix(128, 200)
+        if r > g and r > b:
+            return "red"
+        elif g > r and g > b:
+            return "green"
+        return "blue"
+
+    def get_shape(self):
+        brightness = sum(self.img_pix(64, 170))
+        if brightness > 750:
+            return "ball"
+        return "cube"
+
+    def get_cube_type(self):
+        start_color = None
+        for i in range(256):
+            r, g, b = self.img_pix(i, 255)
+            if sum([r, g, b]) > 750:
+                continue
+            if not start_color:
+                start_color = (r, g, b)
+            if (r, g, b) != start_color:
+                return "hollow"
+
+        return "normal"
+
+    def get_full_info(self):
+        color = self.get_color()
+        shape = self.get_shape()
+        if shape == "cube":
+            cube_type = self.get_cube_type()
+            if cube_type == "hollow":
+                shape = "hollow_cube"
+        return color, shape
+
+    def print_color(self, aditional_info=""):
+        print("info: ", aditional_info)
+        print(self.get_full_info())
+        return self.wait_time(0.1)
+        # self.robot.
+
+    def img_pix(self, x, y):
+        i = 3 * (256 * y + x)
+        return self.robot.cam_image[i: i + 3]
+
     def complete(self):
-        return "complete"
+        yield self.rise(50)
+        self._x_pos = 0
+        self._z_pos = 0
+        yield self.move_pos()
+        self._y_pos = 0
+        yield self.move_pos()
+        yield "complete"
 
+def color_shape_to_position(color, shape):
+    x = z = height = None
+    if color == "red":
+        x = 1
+    elif color == "green":
+        x = 2
+    elif color == "blue":
+        x = 3
+    if shape == "cube":
+        z = 1
+        height = 40
+    elif shape == "hollow_cube":
+        z = 2
+        height = 32
+    elif shape == "ball":
+        z = 3
+        height = 35
+    return x, z, height
 
-def mission_x(robot: ManRobot):
+# 40, 35(ball), 32(hollow)
+
+def mission_y(robot: ManRobot):
     ev = Evangelion(robot)
-    yield from ev.move_to(1, 0)
-    yield from ev.grab_to(3, 4)
-    yield ev.rise(120)
-    yield from ev.grab_to(0, 4)
-    yield from ev.move_to(4, 0)
-    yield from ev.grab_to(0, 0)
-    yield ev.complete()
+    for i in range(1, 4):
+        yield from ev.move_to(i, 4)
+        color, shape = ev.get_full_info()
+        required_x, required_z, height = color_shape_to_position(color, shape)
+        yield from ev.grab_to(required_x, required_z, height)
+
+    yield from ev.complete()
 
 
 if __name__ == '__main__':
@@ -156,7 +228,7 @@ if __name__ == '__main__':
     @sim.on_init
     def init():
         autobot.start_mission(
-            mission_x(sim.robot)
+            mission_y(sim.robot)
         )
 
 
