@@ -6,7 +6,7 @@ from RoboFunctions import ManRobot
 from typing import Optional
 
 
-class Simulation:
+class SyncSimulation:
     def __init__(self):
         self.robot: Optional[ManRobot] = None
         self._do_next_step = True
@@ -53,7 +53,7 @@ class Simulation:
                 print('Simulation was stopped and client was disconnected!')
 
 
-sim = Simulation()
+sim = SyncSimulation()
 
 
 @sim.on_init
