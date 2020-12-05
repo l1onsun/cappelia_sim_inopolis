@@ -5,6 +5,7 @@ import b0RemoteApi
 from RoboFunctions import ManRobot
 from typing import Optional
 from math import isclose
+import time
 
 
 class SyncSimulation:
@@ -76,24 +77,75 @@ class RobotController:
                 self.wait_for_completion = next(self.mission_generator)
 
 
-def move_pos(robot: ManRobot, x, y, z):
-    robot.setPositions(x, y, z)
+class Evangelion:
+    def __init__(self, robot: ManRobot):
+        self.robot = robot
+        self._x_pos = 0
+        self._y_pos = 0
+        self._z_pos = 0
 
-    def wait_for_completion():
-        if isclose(robot.X_enc, x, abs_tol=1) and \
-                isclose(robot.Y_enc, y, abs_tol=1) and \
-                isclose(robot.Z_enc, z, abs_tol=1):
-            return True
-        return False
+    def wait_one_step(self):
+        return lambda: True
 
-    return wait_for_completion
+    def wait_time(self, seconds):
+        start = time.time()
+        return lambda: (time.time() >= start + seconds)
+
+    def release(self):
+        self.robot.releaseObject()
+        yield self.wait_one_step()
+
+    def release_and_grab(self):
+        yield from self.release()
+        self.robot.grapObject()
+        yield self.wait_one_step()
+
+    def move_pos(self):
+        self.robot.setPositions(self._x_pos, self._y_pos, self._z_pos)
+
+        def wait_for_completion():
+            if isclose(self.robot.X_enc, self._x_pos, abs_tol=1) and \
+                    isclose(self.robot.Y_enc, self._y_pos, abs_tol=1) and \
+                    isclose(self.robot.Z_enc, self._z_pos, abs_tol=1):
+                return True
+            return False
+
+        return wait_for_completion
+
+    def shift(self, x, z):
+        self._x_pos = 21 + 37 * x
+        self._z_pos = 21 + 37 * z
+        return self.move_pos()
+
+    def rise(self, y):
+        self._y_pos = y
+        return self.move_pos()
+
+    def move_to(self, x, y):
+        yield self.rise(50)
+        yield self.shift(x, y)
+
+    def grab_to(self, x, y):
+        yield self.rise(40)
+        yield from self.release_and_grab()
+        yield self.rise(80)
+        yield self.shift(x, y)
+        yield self.rise(40)
+        yield from self.release()
+
+    def complete(self):
+        return "complete"
 
 
 def mission_x(robot: ManRobot):
-    yield move_pos(robot, 100, 100, 100)
-    yield move_pos(robot, 100, 100, 0)
-    yield move_pos(robot, 0, 100, 100)
-    yield move_pos(robot, 0, 100, 0)
+    ev = Evangelion(robot)
+    yield from ev.move_to(1, 0)
+    yield from ev.grab_to(3, 4)
+    yield ev.rise(120)
+    yield from ev.grab_to(0, 4)
+    yield from ev.move_to(4, 0)
+    yield from ev.grab_to(0, 0)
+    yield ev.complete()
 
 
 if __name__ == '__main__':
