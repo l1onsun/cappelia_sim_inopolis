@@ -3,10 +3,7 @@ import os
 os.add_dll_directory(r'C:\Program Files\CoppeliaRobotics\CoppeliaSimEdu')
 import b0RemoteApi
 from RoboFunctions import ManRobot
-import time
 from typing import Optional
-from collections import deque
-from math import isclose
 
 
 class Simulation:
@@ -15,18 +12,18 @@ class Simulation:
         self._do_next_step = True
         self.init = self.simulation_step_started = self.simulation_step_done = self.cleanup = None
         self.on_init(lambda: None)
-        self.on_step_started(lambda msg: None)
-        self.on_step_done(lambda msg: None)
+        self.on_step_started(lambda: None)
+        self.on_step_done(lambda: None)
         self.on_cleanup(lambda: None)
 
     def on_init(self, callback):
         self.init = callback
 
     def on_step_started(self, callback):
-        self.simulation_step_started = callback
+        self.simulation_step_started = lambda msg: callback()
 
     def on_step_done(self, callback):
-        def callback_and_sync():
+        def callback_and_sync(msg):
             callback()
             self._do_next_step = True
 
@@ -56,61 +53,27 @@ class Simulation:
                 print('Simulation was stopped and client was disconnected!')
 
 
-class RobotController:
-    def __init__(self, robot: ManRobot):
-        self._x = self._z = 0
-        self.tasks = deque()
-
-    def receive_mission(self, mission):
-        self.mission = mission
-
-    def update(self):
-        pass
+sim = Simulation()
 
 
-def task_move():
-    def mission():
-        task_move()
-
-    def complete():
-        pass
+@sim.on_init
+def init():
+    pass
 
 
-def move_pos(robot: ManRobot, x, y, z):
-    robot.setPositions(x, y, z)
-
-    def wait():
-        if isclose(robot.X_enc, x) and \
-                isclose(robot.Y_enc, y) and \
-                isclose(robot.Z_enc, z):
-            return True
-        return False
-
-    return wait
+@sim.on_step_started
+def step_start():
+    pass
 
 
-def mission(robot: ManRobot):
-    yield move_pos(robot, 100, 100, 100)
-    yield move_pos(robot, 100, 100, 0)
-    yield move_pos(robot, 0, 100, 100)
-    yield move_pos(robot, 0, 100, 0)
+@sim.on_step_done
+def step_end():
+    pass
 
 
-def main():
-    sim = Simulation()
-    autobot = RobotController(sim.robot)
-
-    @sim.on_init
-    def init():
-        autobot.receive_mission(mission)
-        sim.robot.setPositions(100, 100, 100)
-
-    @sim.on_step_started
-    def step_start(msg):
-        pass
-
-    sim.start()
+@sim.on_cleanup
+def cleanup():
+    pass
 
 
-if __name__ == '__main__':
-    main()
+sim.start()
